@@ -45,12 +45,12 @@ async def process_conversion(file_type: str, file_content: str):
 
     return {"output_file": output_path}
 
-def save_base64_file(file_content: str) -> str:
+def save_base64_file(file_content: str,file_name: str = "uploaded_file") -> str:
     """
     Saves Base64-encoded content to a file.
     """
     decoded_data = base64.b64decode(file_content)
-    input_path = os.path.join(UPLOAD_DIR, "input_file")
+    input_path = os.path.join(UPLOAD_DIR, file_name)
     with open(input_path, "wb") as f:
         f.write(decoded_data)
     return input_path
