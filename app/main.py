@@ -1,11 +1,6 @@
 from fastapi import FastAPI
-from app.router.file_conversion import router as file_conversion_router
+from app.routes.conversion_routes import router as conversion_router
 
 app = FastAPI()
 
-# Include the file conversion routes
-app.include_router(file_conversion_router)
-
-@app.get("/status/")
-async def status():
-    return {"status": "File Conversion API is running."}
+app.include_router(conversion_router, prefix="/conversion")
