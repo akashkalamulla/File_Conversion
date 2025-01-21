@@ -1,52 +1,67 @@
+from fastapi import APIRouter, UploadFile, Form, HTTPException
+from fastapi.responses import StreamingResponse
 from io import BytesIO
-
-from fastapi import APIRouter, UploadFile
-from fastapi.responses import JSONResponse
-from app.services.conversion_service import (
-    jpg_to_pdf,
-    word_to_pdf,
-    encode_io_to_base64,
-    excel_to_pdf,
-    ppt_to_pdf,
-    html_to_pdf,
-    pdf_to_jpg,
-    pdf_to_word,
-    pdf_to_ppt,
-    pdf_to_excel,
-)
+from app.services.conversion_service import *
+from app.utils.file_validation import validate_file_type
 
 router = APIRouter()
 
+
 @router.post("/process/")
-async def process_conversion(file_type: str, file: UploadFile):
-    """
-    Handles file conversion based on the file type and uploaded file.
-    """
+async def process_conversion(
+        file_type: str = Form(...),
+        file: UploadFile = Form(...)
+):
+    """Converts an uploaded file and returns it as a downloadable file."""
     try:
+        file_type = file_type.strip()  # Remove extra spaces
+        validate_file_type(file_type, file)
+
         input_io = BytesIO(await file.read())
 
-        if file_type == "jpg-to-pdf":
-            output_io = await jpg_to_pdf(input_io)
-        elif file_type == "word-to-pdf":
-            output_io = await word_to_pdf(input_io)
-        elif file_type == "excel-to-pdf":
-            output_io = await excel_to_pdf(input_io)
-        elif file_type == "ppt-to-pdf":
-            output_io = await ppt_to_pdf(input_io)
-        elif file_type == "html-to-pdf":
-            output_io = await html_to_pdf(input_io)
-        elif file_type == "pdf-to-jpg":
-            output_files = await pdf_to_jpg(input_io)
-            return JSONResponse(content={"output_files": output_files})
-        elif file_type == "pdf-to-word":
-            output_io = await pdf_to_word(input_io)
-        elif file_type == "pdf-to-ppt":
-            output_io = await pdf_to_ppt(input_io)
-        elif file_type == "pdf-to-excel":
-            output_io = await pdf_to_excel(input_io)
-        else:
-            return JSONResponse(content={"error": f"Unsupported file type: {file_type}"}, status_code=400)
+        conversion_functions = {
+            "jpg-to-pdf": jpg_to_pdf,
+            "word-to-pdf": word_to_pdf,
+            "excel-to-pdf": excel_to_pdf,
+            "ppt-to-pdf": ppt_to_pdf,
+            "html-to-pdf": html_to_pdf,
+            "pdf-to-jpg": pdf_to_jpg,
+            "pdf-to-word": pdf_to_word,
+            "pdf-to-ppt": pdf_to_ppt,
+            "pdf-to-excel": pdf_to_excel,
+        }
 
-        return JSONResponse(content={"file": encode_io_to_base64(output_io)})
+        if file_type not in conversion_functions:
+            raise HTTPException(status_code=400, detail=f"Unsupported file type: {file_type}")
+
+        output_io = await conversion_functions[file_type](input_io)
+
+        output_extension = {
+            "jpg-to-pdf": "pdf",
+            "word-to-pdf": "pdf",
+            "excel-to-pdf": "pdf",
+            "ppt-to-pdf": "pdf",
+            "html-to-pdf": "pdf",
+            "pdf-to-jpg": "jpg",
+            "pdf-to-word": "docx",
+            "pdf-to-ppt": "pptx",
+            "pdf-to-excel": "xlsx",
+        }
+
+        output_filename = f"converted_file.{output_extension[file_type]}"
+        content_type = {
+            "pdf": "application/pdf",
+            "jpg": "image/jpeg",
+            "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        }.get(output_extension[file_type], "application/octet-stream")
+
+        return StreamingResponse(
+            output_io,
+            media_type=content_type,
+            headers={"Content-Disposition": f"attachment; filename={output_filename}"}
+        )
+
     except Exception as e:
-        return JSONResponse(content={"error": str(e)}, status_code=500)
+        return HTTPException(status_code=500, detail=str(e))

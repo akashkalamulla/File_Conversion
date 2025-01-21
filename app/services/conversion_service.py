@@ -1,4 +1,5 @@
 import base64
+import tempfile
 from io import BytesIO
 from fpdf import FPDF
 from PIL import Image
@@ -7,16 +8,18 @@ from pdf2image import convert_from_path
 from docx import Document
 from pptx import Presentation
 import pandas as pd
+import pdfplumber
 from PyPDF2 import PdfReader
 
+
 def encode_io_to_base64(file_io: BytesIO) -> str:
-    """
-    Encodes a BytesIO object to a Base64 string.
-    """
+    """Encodes a BytesIO object to a Base64 string."""
     file_io.seek(0)
     return base64.b64encode(file_io.read()).decode("utf-8")
 
+
 async def jpg_to_pdf(input_io: BytesIO) -> BytesIO:
+    """Converts JPG or PNG to PDF."""
     try:
         output_io = BytesIO()
         output_io.write(img2pdf.convert(input_io))
@@ -25,7 +28,9 @@ async def jpg_to_pdf(input_io: BytesIO) -> BytesIO:
     except Exception as e:
         raise ValueError(f"JPG-to-PDF conversion failed: {e}")
 
+
 async def word_to_pdf(input_io: BytesIO) -> BytesIO:
+    """Converts Word document to PDF."""
     try:
         output_io = BytesIO()
         pdf = FPDF()
@@ -40,7 +45,9 @@ async def word_to_pdf(input_io: BytesIO) -> BytesIO:
     except Exception as e:
         raise ValueError(f"Word-to-PDF conversion failed: {e}")
 
+
 async def excel_to_pdf(input_io: BytesIO) -> BytesIO:
+    """Converts Excel spreadsheet to PDF."""
     try:
         output_io = BytesIO()
         pdf = FPDF()
@@ -55,7 +62,9 @@ async def excel_to_pdf(input_io: BytesIO) -> BytesIO:
     except Exception as e:
         raise ValueError(f"Excel-to-PDF conversion failed: {e}")
 
+
 async def ppt_to_pdf(input_io: BytesIO) -> BytesIO:
+    """Converts PowerPoint presentations to PDF."""
     try:
         output_io = BytesIO()
         pdf = FPDF()
@@ -72,7 +81,9 @@ async def ppt_to_pdf(input_io: BytesIO) -> BytesIO:
     except Exception as e:
         raise ValueError(f"PPT-to-PDF conversion failed: {e}")
 
+
 async def html_to_pdf(input_io: BytesIO) -> BytesIO:
+    """Converts HTML content to PDF."""
     try:
         output_io = BytesIO()
         pdf = FPDF()
@@ -86,35 +97,48 @@ async def html_to_pdf(input_io: BytesIO) -> BytesIO:
     except Exception as e:
         raise ValueError(f"HTML-to-PDF conversion failed: {e}")
 
+
 async def pdf_to_jpg(input_io: BytesIO):
+    """Converts PDF pages to JPG images."""
     try:
-        images = convert_from_path(input_io)
-        output_files = []
-        for i, image in enumerate(images):
-            output_io = BytesIO()
-            image.save(output_io, "JPEG")
-            output_io.seek(0)
-            output_files.append(encode_io_to_base64(output_io))
+        with tempfile.NamedTemporaryFile(delete=True, suffix=".pdf") as temp_pdf:
+            temp_pdf.write(input_io.read())
+            temp_pdf.flush()
+
+            images = convert_from_path(temp_pdf.name)
+            output_files = []
+            for image in images:
+                output_io = BytesIO()
+                image.save(output_io, "JPEG")
+                output_io.seek(0)
+                output_files.append(encode_io_to_base64(output_io))
+
         return output_files
     except Exception as e:
         raise ValueError(f"PDF-to-JPG conversion failed: {e}")
 
+
 async def pdf_to_word(input_io: BytesIO) -> BytesIO:
+    """Converts PDF to editable Word document."""
     try:
         output_io = BytesIO()
-        reader = PdfReader(input_io)
         doc = Document()
-        for page in reader.pages:
-            text = page.extract_text()
-            if text:
-                doc.add_paragraph(text)
+
+        with pdfplumber.open(input_io) as pdf:
+            for page in pdf.pages:
+                text = page.extract_text()
+                if text:
+                    doc.add_paragraph(text)
+
         doc.save(output_io)
         output_io.seek(0)
         return output_io
     except Exception as e:
         raise ValueError(f"PDF-to-Word conversion failed: {e}")
 
+
 async def pdf_to_ppt(input_io: BytesIO) -> BytesIO:
+    """Converts PDF pages into PowerPoint slides."""
     try:
         output_io = BytesIO()
         reader = PdfReader(input_io)
@@ -131,15 +155,20 @@ async def pdf_to_ppt(input_io: BytesIO) -> BytesIO:
     except Exception as e:
         raise ValueError(f"PDF-to-PPT conversion failed: {e}")
 
+
 async def pdf_to_excel(input_io: BytesIO) -> BytesIO:
+    """Extracts table data from PDF and converts it to an Excel spreadsheet."""
     try:
         output_io = BytesIO()
-        reader = PdfReader(input_io)
         data = []
-        for page in reader.pages:
-            text = page.extract_text()
-            if text:
-                data.append([line for line in text.splitlines()])
+
+        with pdfplumber.open(input_io) as pdf:
+            for page in pdf.pages:
+                tables = page.extract_tables()
+                for table in tables:
+                    for row in table:
+                        data.append(row)
+
         df = pd.DataFrame(data)
         df.to_excel(output_io, index=False, header=False)
         output_io.seek(0)
