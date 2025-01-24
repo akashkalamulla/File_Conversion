@@ -1,23 +1,22 @@
 from fastapi import APIRouter, UploadFile, Form, HTTPException
-from fastapi.responses import StreamingResponse
-from io import BytesIO
+from fastapi.responses import FileResponse
 from app.services.conversion_service import *
 from app.utils.file_validation import validate_file_type
 
 router = APIRouter()
 
+SAVE_FOLDER = "converted_files"
 
 @router.post("/process/")
 async def process_conversion(
-        file_type: str = Form(...),
-        file: UploadFile = Form(...)
+    file_type: str = Form(...),
+    file: UploadFile = Form(...)
 ):
-    """Converts an uploaded file and returns it as a downloadable file."""
+    """Converts an uploaded file, saves it in 'converted_files/', and returns a download link."""
     try:
         file_type = file_type.strip()  # Remove extra spaces
         validate_file_type(file_type, file)
-
-        input_io = BytesIO(await file.read())
+        input_io = BytesIO(await file.read())  # Read file into memory
 
         conversion_functions = {
             "jpg-to-pdf": jpg_to_pdf,
@@ -34,34 +33,22 @@ async def process_conversion(
         if file_type not in conversion_functions:
             raise HTTPException(status_code=400, detail=f"Unsupported file type: {file_type}")
 
-        output_io = await conversion_functions[file_type](input_io)
+        saved_file_path = await conversion_functions[file_type](input_io)
 
-        output_extension = {
-            "jpg-to-pdf": "pdf",
-            "word-to-pdf": "pdf",
-            "excel-to-pdf": "pdf",
-            "ppt-to-pdf": "pdf",
-            "html-to-pdf": "pdf",
-            "pdf-to-jpg": "jpg",
-            "pdf-to-word": "docx",
-            "pdf-to-ppt": "pptx",
-            "pdf-to-excel": "xlsx",
-        }
+        # Generate a download link
+        download_url = f"http://127.0.0.1:8000/download/{os.path.basename(saved_file_path)}"
 
-        output_filename = f"converted_file.{output_extension[file_type]}"
-        content_type = {
-            "pdf": "application/pdf",
-            "jpg": "image/jpeg",
-            "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-            "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        }.get(output_extension[file_type], "application/octet-stream")
-
-        return StreamingResponse(
-            output_io,
-            media_type=content_type,
-            headers={"Content-Disposition": f"attachment; filename={output_filename}"}
-        )
+        return {"message": "File converted successfully", "download_url": download_url}
 
     except Exception as e:
         return HTTPException(status_code=500, detail=str(e))
+
+@router.get("/download/{filename}")
+async def download_file(filename: str):
+    """Allows users to download a previously converted file from 'converted_files/'."""
+    file_path = os.path.join(SAVE_FOLDER, filename)
+
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+
+    return FileResponse(file_path, filename=filename)

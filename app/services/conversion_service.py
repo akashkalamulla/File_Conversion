@@ -1,5 +1,7 @@
 import base64
 import tempfile
+import os
+import uuid
 from io import BytesIO
 from fpdf import FPDF
 from PIL import Image
@@ -11,6 +13,9 @@ import pandas as pd
 import pdfplumber
 from PyPDF2 import PdfReader
 
+# Define a folder to store converted files
+SAVE_FOLDER = "converted_files"
+os.makedirs(SAVE_FOLDER, exist_ok=True)  # Ensure folder exists
 
 def encode_io_to_base64(file_io: BytesIO) -> str:
     """Encodes a BytesIO object to a Base64 string."""
@@ -46,22 +51,41 @@ async def word_to_pdf(input_io: BytesIO) -> BytesIO:
         raise ValueError(f"Word-to-PDF conversion failed: {e}")
 
 
-async def excel_to_pdf(input_io: BytesIO) -> BytesIO:
-    """Converts Excel spreadsheet to PDF."""
+async def excel_to_pdf(input_io: BytesIO) -> str:
+    """Converts an Excel spreadsheet to a PDF file and saves it with a unique name."""
     try:
-        output_io = BytesIO()
+        input_io.seek(0)  # Move to the start of the file
+
+        # Read Excel file directly from BytesIO
+        df = pd.read_excel(input_io, engine="openpyxl")
+
+        # Generate a unique filename
+        file_id = str(uuid.uuid4())[:8]  # Create a short unique ID
+        pdf_filename = os.path.join(SAVE_FOLDER, f"converted_{file_id}.pdf")
+
+        # Create a PDF file
         pdf = FPDF()
+        pdf.set_auto_page_break(auto=True, margin=15)
         pdf.add_page()
-        pdf.set_font("Arial", size=12)
-        df = pd.read_excel(input_io)
+        pdf.set_font("Arial", size=10)
+
+        # Write table headers
+        for col in df.columns:
+            pdf.cell(40, 10, col, border=1)
+        pdf.ln()
+
+        # Write table rows
         for _, row in df.iterrows():
-            pdf.multi_cell(0, 10, txt=str(row.values))
-        pdf.output(output_io)
-        output_io.seek(0)
-        return output_io
+            for cell in row:
+                pdf.cell(40, 10, str(cell), border=1)
+            pdf.ln()
+
+        pdf.output(pdf_filename)  # Save the file
+
+        return pdf_filename  # Return saved file path
+
     except Exception as e:
         raise ValueError(f"Excel-to-PDF conversion failed: {e}")
-
 
 async def ppt_to_pdf(input_io: BytesIO) -> BytesIO:
     """Converts PowerPoint presentations to PDF."""
