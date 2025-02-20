@@ -35,32 +35,39 @@ async def jpg_to_pdf(input_io: BytesIO) -> BytesIO:
 
 
 async def word_to_pdf(input_io: BytesIO) -> BytesIO:
-    """Converts Word document to PDF."""
     try:
-        output_io = BytesIO()
+        input_io.seek(0)
+
+        # Create a temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as temp_file:
+            temp_file.write(input_io.read())
+            temp_file_path = temp_file.name
+
+        # Load document from the temporary file path
+        doc = Document(temp_file_path)
+
+        # Generate PDF
         pdf = FPDF()
         pdf.add_page()
         pdf.set_font("Arial", size=12)
 
-        # Open the input BytesIO as a file-like object for python-docx
-        input_io.seek(0) # Ensure the BytesIO object is at the start
-        doc = Document(input_io) # Ensure the BytesIO object is at the start
-
         for paragraph in doc.paragraphs:
-            # Replace non-ASCII characters with their closest ASCII equivalent
-            text = paragraph.text.replace('–', '-')  # Replace long dash with regular dash
-            text = text.replace('—', '-')  # Replace em dash with regular dash
-            text = text.encode('latin-1', 'ignore').decode('latin-1')  # Ensure proper encoding
-
-            # Add paragraph text to PDF
+            text = paragraph.text.replace('–', '-').replace('—', '-')
+            text = text.encode('latin-1', 'ignore').decode('latin-1')
             pdf.multi_cell(0, 10, txt=text)
 
+        output_io = BytesIO()
         pdf.output(output_io)
         output_io.seek(0)
+
+        # Cleanup the temporary file
+        os.remove(temp_file_path)
+
         return output_io
     except Exception as e:
+        if 'temp_file_path' in locals():
+            os.remove(temp_file_path)  # Ensure cleanup on error
         raise ValueError(f"Word-to-PDF conversion failed: {e}")
-
 
 class PDF(FPDF):
     def header(self):
