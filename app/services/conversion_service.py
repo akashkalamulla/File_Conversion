@@ -148,20 +148,39 @@ async def excel_to_pdf(input_io: BytesIO) -> str:
     except Exception as e:
         raise ValueError(f"Excel-to-PDF conversion failed: {e}")
 
+
 async def ppt_to_pdf(input_io: BytesIO) -> BytesIO:
     """Converts PowerPoint presentations to PDF."""
     try:
+        # Step 1: Create a temporary file to save the BytesIO content
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pptx") as temp_file:
+            temp_file.write(input_io.getvalue())  # Write BytesIO content to the temporary file
+            temp_file_path = temp_file.name  # Get the path of the temporary file
+
+        # Step 2: Load the PowerPoint presentation from the temporary file
+        ppt = Presentation(temp_file_path)
+
+        # Step 3: Create the PDF in memory
         output_io = BytesIO()
         pdf = FPDF()
         pdf.add_page()
         pdf.set_font("Arial", size=12)
-        ppt = Presentation(input_io)
+
+        # Step 4: Extract text from slides and add it to the PDF
         for slide in ppt.slides:
             for shape in slide.shapes:
-                if hasattr(shape, "text"):
-                    pdf.multi_cell(0, 10, txt=shape.text)
+                if hasattr(shape, "text"):  # Check if the shape contains text
+                    text = shape.text
+                    # Add text to PDF
+                    pdf.multi_cell(0, 10, txt=text)
+
+        # Step 5: Save the PDF to BytesIO
         pdf.output(output_io)
-        output_io.seek(0)
+        output_io.seek(0)  # Reset pointer to the start of the output stream
+
+        # Step 6: Clean up the temporary file
+        os.remove(temp_file_path)
+
         return output_io
     except Exception as e:
         raise ValueError(f"PPT-to-PDF conversion failed: {e}")
